@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# ЧЕРНОВИК
+
+set -o pipefail
+
 # Описание:
 # управление правами доступа и владельцами файлов/директорий
 # Внимание: скрипт меняет системные файлы
@@ -33,7 +35,6 @@ MASSIVE_FILES=(
   "/root/.bashrc"
 )
 
-shopt -s nullglob
 
 # ------------------------------------------------
 # ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ (для обработки аргументов)
@@ -73,7 +74,8 @@ debug() {
 # -------------------------------
 get_default_file() { echo "$(basename "$0")_output.txt"; }
 DEFAULT_FILE_NAME="$(get_default_file)"
-WORKDIR="$(pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKDIR="$SCRIPT_DIR"
 
 # ---------------------------------------
 # Справка
@@ -149,7 +151,7 @@ parse_arg() {
         ;;
       --chmod)
         if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then
-          ARG_VALUE_CHMOD="$2"
+          ARG_VALUE_CHMOD="${2:-}"
           shift 2
         else
           error "Не указан mode для --chmod (например: --chmod=644)"
@@ -157,7 +159,6 @@ parse_arg() {
         fi
         ;;
       --chown=*)
-        # FIX: было ARG_VALUE_CHOWN=$"{1#*=}" (синтаксическая ошибка)
         ARG_VALUE_CHOWN="${1#*=}"
         shift
         ;;
@@ -257,6 +258,9 @@ import_from_file() {
 
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" ]] && continue
     new_list+=("$line")
   done < "$file"
 
@@ -326,7 +330,7 @@ create_user_and_group() {
   local user=""
   local group=""
 
-  if [[ -z "$ARG_VALUE_CHOWN" ]]; then
+  if [[ "$ARG_VALUE_CHOWN" ]]; then
     user="tuser"
     group="tgroup"
     info "--create без --chown: создаю пользователя/группу по умолчанию: ${user}:${group}"
@@ -393,13 +397,20 @@ set_chown() {
   for path in "${MASSIVE_FILES[@]}"; do
     while IFS= read -r target; do
       had_any=true
+
       if [[ -n "$rec" ]]; then
         debug "chown $rec $owner_group $target"
+        if [[ "$ARG_VALUE_DEBUG == true" ]]; then
         chown $rec "$owner_group" "$target" 2>/dev/null || warn "chown не выполнен: $target"
+      fi
       else
         debug "chown $owner_group $target"
-        chown "$owner_group" "$target" 2>/dev/null || warn "chown не выполнен: $target"
-      fi
+          if [[ "$ARG_VALUE_DEBUG" == true ]]; then
+            chown "$owner_group" "$target" || warn "chown не выполнен: $target"
+          else
+            chown "$owner_group" "$target" 2>/dev/null || warn "chown не выполнен: $target"
+          fi
+        fi
     done < <(expand_targets "$path" || true)
   done
 
@@ -427,13 +438,23 @@ set_chmod() {
   for path in "${MASSIVE_FILES[@]}"; do
     while IFS= read -r target; do
       had_any=true
+
       if [[ -n "$rec" ]]; then
         debug "chmod $rec $mode $target"
-        chmod $rec "$mode" "$target" 2>/dev/null || warn "chmod не выполнен: $target"
+        if [[ "$ARG_VALUE_DEBUG == true" ]]; then
+          chmod $rec "$mode" "$target" || warn "chmod не выполнен: $target"
+        else
+          chmod $rec "$mode" "$target" 2>/dev/null || warn "chmod не выполнен: $target"
+        fi
       else
         debug "chmod $mode $target"
-        chmod "$mode" "$target" 2>/dev/null || warn "chmod не выполнен: $target"
+        if [[ "$ARG_VALUE_DEBUG" == true ]]; then
+          chmod "$mode" "$target" || warn "chmod не выполнен: $target"
+        else
+          chmod "$mode" "$target" 2>/dev/null || warn "chmod не выполнен: $target"
+        fi
       fi
+
     done < <(expand_targets "$path" || true)
   done
 
@@ -463,6 +484,8 @@ show_report() {
   [[ "$has_output" == false ]] && warn "Список файлов пуст/недоступен или шаблоны не совпали"
 }
 
+
+# ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
 # MAIN
 # ------------------------------------------------------------------------------------
@@ -480,6 +503,11 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# Безопасность: предупреждение, если не используем --import
+if [[ "$ARG_FLAG_IMPORT" != true ]]; then
+  warn "Не указан --import. Будет использован системный список MASSIVE_FILES (опасно)."
+fi
+
 # IMPORT
 if [[ "$ARG_FLAG_IMPORT" == true ]]; then
   if [[ -z "$ARG_VALUE_IMPORT" ]]; then
@@ -494,10 +522,16 @@ if [[ "$ARG_FLAG_IMPORT" == true ]]; then
   import_from_file "$ARG_VALUE_IMPORT" || exit 1
 fi
 
-# CREATE
+# CREATE (валидация+действие)
+if [[ "$ARG_VALUE_CREATE" == true && -z "$ARG_VALUE_CHOWN" ]]; then
+  error "--create нельзя использовать без --chown"
+  exit 1
+fi
+
 if [[ "$ARG_VALUE_CREATE" == true ]]; then
   create_user_and_group || exit 1
 fi
+
 
 # CHOWN
 if [[ -n "$ARG_VALUE_CHOWN" ]]; then
