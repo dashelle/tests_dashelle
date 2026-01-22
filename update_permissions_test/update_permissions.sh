@@ -518,9 +518,14 @@ if [[ "$ARG_FLAG_IMPORT" == true ]]; then
       exit 1
     fi
   fi
-  info "Импорт из $ARG_VALUE_IMPORT"
-  import_from_file "$ARG_VALUE_IMPORT" || exit 1
+
+  if import_from_file "$ARG_VALUE_IMPORT"; then
+    info "Импорт выполнен из $ARG_VALUE_IMPORT"
+  else
+    exit 1
+  fi
 fi
+
 
 # CREATE (валидация+действие)
 if [[ "$ARG_VALUE_CREATE" == true && -z "$ARG_VALUE_CHOWN" ]]; then
