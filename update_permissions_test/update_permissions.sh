@@ -400,7 +400,7 @@ set_chown() {
 
       if [[ -n "$rec" ]]; then
         debug "chown $rec $owner_group $target"
-        if [[ "$ARG_VALUE_DEBUG == true" ]]; then
+        if [[ "$ARG_VALUE_DEBUG" == true ]]; then
         chown $rec "$owner_group" "$target" 2>/dev/null || warn "chown не выполнен: $target"
       fi
       else
@@ -441,7 +441,7 @@ set_chmod() {
 
       if [[ -n "$rec" ]]; then
         debug "chmod $rec $mode $target"
-        if [[ "$ARG_VALUE_DEBUG == true" ]]; then
+        if [[ "$ARG_VALUE_DEBUG" == true ]]; then
           chmod $rec "$mode" "$target" || warn "chmod не выполнен: $target"
         else
           chmod $rec "$mode" "$target" 2>/dev/null || warn "chmod не выполнен: $target"
@@ -563,3 +563,4 @@ fi
 if [[ "$ARG_VALUE_REPORT" == true ]]; then
   show_report
 fi
+

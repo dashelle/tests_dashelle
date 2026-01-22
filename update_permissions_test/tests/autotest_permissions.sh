@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -eo pipefail
 # NB: deliberately NOT using -u to avoid path expansion issues in tests
-
+#############
+# потом доделать, пока не вышло
 #######################################
 # Paths
 #######################################

@@ -1,0 +1,20 @@
+cat > files.txt <<'EOF'
+/etc/shadow
+/etc/passwd
+/etc/group
+/etc/profile.d/*
+/etc/profile
+/etc/fstab
+/etc/fstab.d
+/etc/fstab.pdac
+/etc/modprobe.d/*
+/etc/rc*
+/etc/bash.bashrc
+/etc/crontab
+/usr/sbin/cron
+/usr/sbin/anacron
+/var/spool/cron/
+/var/spool/cron/crontabs
+/root/.profile
+/root/.bashrc
+EOF
