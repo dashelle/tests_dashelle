@@ -64,7 +64,7 @@ sudo ./update_permissions.sh --import=missing.txt
 ###########
 
 4) Export
-4.1.) Экспорт без импорт
+4.1.) Экспорт без импорта
 sudo ./update_permissions.sh --export
 ОР: 1) создан update_permissions.sh_output.txt; 2) содержит массив MASSIVE_FILES
 
@@ -111,7 +111,7 @@ sudo ./update_permissions.sh --import=files.txt --chown=root:root
 sudo ./update_permissions.sh --import=files.txt --chown=nouser:nogroup
 ОР: ошибка, exit != 0
 
-Несуществующий пользователья с --create:
+Несуществующий пользователь с --create:
 sudo ./update_permissions.sh --import=files.txt --chown=testu:testg --create
 ОР: success
 создан пользователь, создана группа, chown выполнен
