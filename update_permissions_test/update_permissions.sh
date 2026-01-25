@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -o pipefail
+set -e
 
 # Описание:
 # управление правами доступа и владельцами файлов/директорий
@@ -224,7 +225,7 @@ validate_chmod_mode() {
   local mode="$1"
   [[ -z "$mode" ]] && return 1
   [[ ${#mode} -ne 3 && ${#mode} -ne 4 ]] && return 1
-  [[ "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+  [[ "$mode" =~ ^[0-7][0-7]{2}$ ]] || return 1
   return 0
 }
 
@@ -330,7 +331,7 @@ create_user_and_group() {
   local user=""
   local group=""
 
-  if [[ "$ARG_VALUE_CHOWN" ]]; then
+  if [[ -z "$ARG_VALUE_CHOWN" ]]; then
     user="tuser"
     group="tgroup"
     info "--create без --chown: создаю пользователя/группу по умолчанию: ${user}:${group}"
@@ -386,7 +387,7 @@ set_chown() {
     group=""
   fi
 
-  if [[ "$ARG_VALUE_CREATE" != true ]]; then
+  if [[ "$ARG_VALUE_CREATE" == true ]]; then
     [[ -n "$user"  ]] && ! user_exist "$user"  && { error "Пользователь не существует: $user. Используйте --create"; return 1; }
     [[ -n "$group" ]] && ! group_exist "$group" && { error "Группа не существует: $group. Используйте --create"; return 1; }
   fi
@@ -398,6 +399,8 @@ set_chown() {
     while IFS= read -r target; do
       had_any=true
 
+      [[ -d "$target" && "$rec" ]] && continue
+
       if [[ -n "$rec" ]]; then
         debug "chown $rec $owner_group $target"
         if [[ "$ARG_VALUE_DEBUG" == true ]]; then
@@ -406,9 +409,9 @@ set_chown() {
       else
         debug "chown $owner_group $target"
           if [[ "$ARG_VALUE_DEBUG" == true ]]; then
-            chown "$owner_group" "$target" || warn "chown не выполнен: $target"
+            chown $rec "$owner_group" "$target" || warn "chown не выполнен: $target"
           else
-            chown "$owner_group" "$target" 2>/dev/null || warn "chown не выполнен: $target"
+            chown $rec "$owner_group" "$target" 2>/dev/null || warn "chown не выполнен: $target"
           fi
         fi
     done < <(expand_targets "$path" || true)
@@ -438,6 +441,8 @@ set_chmod() {
   for path in "${MASSIVE_FILES[@]}"; do
     while IFS= read -r target; do
       had_any=true
+
+      [[ -d "$target" && "$rec" ]] && continue
 
       if [[ -n "$rec" ]]; then
         debug "chmod $rec $mode $target"
