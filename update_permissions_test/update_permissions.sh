@@ -67,8 +67,11 @@ warn()  { printf "${YELLOW_COLOR}[WARN]${NORMAL} %s\n" "$*"; }
 error() { printf "${RED_COLOR}[ERROR]${NORMAL} %s\n" "$*"; }
 
 debug() {
-  [[ "${ARG_VALUE_DEBUG}" == true ]] && printf "${YELLOW_COLOR}[DEBUG]${NORMAL} %s\n" "$*"
+  if [[ "${ARG_VALUE_DEBUG}" == true ]]; then
+    printf "${YELLOW_COLOR}[DEBUG]${NORMAL} %s\n" "$*"
+  fi
 }
+
 
 # -------------------------------
 # Имя файла для import/export
@@ -225,7 +228,7 @@ validate_chmod_mode() {
   local mode="$1"
   [[ -z "$mode" ]] && return 1
   [[ ${#mode} -ne 3 && ${#mode} -ne 4 ]] && return 1
-  [[ "$mode" =~ ^[0-7][0-7]{2}$ ]] || return 1
+[[ "$mode" =~ ^0?[1-7][0-7]{2}$ ]] || return 1
   return 0
 }
 
@@ -387,10 +390,10 @@ set_chown() {
     group=""
   fi
 
-  if [[ "$ARG_VALUE_CREATE" == true ]]; then
-    [[ -n "$user"  ]] && ! user_exist "$user"  && { error "Пользователь не существует: $user. Используйте --create"; return 1; }
-    [[ -n "$group" ]] && ! group_exist "$group" && { error "Группа не существует: $group. Используйте --create"; return 1; }
-  fi
+if [[ "$ARG_VALUE_CREATE" != true ]]; then
+  [[ -n "$user"  ]] && ! user_exist "$user"  && { error "Пользователь не существует: $user. Используйте --create"; return 1; }
+  [[ -n "$group" ]] && ! group_exist "$group" && { error "Группа не существует: $group. Используйте --create"; return 1; }
+fi
 
   local path="" target=""
   local had_any=false
@@ -402,18 +405,21 @@ set_chown() {
       [[ -d "$target" && "$rec" ]] && continue
 
       if [[ -n "$rec" ]]; then
-        debug "chown $rec $owner_group $target"
-        if [[ "$ARG_VALUE_DEBUG" == true ]]; then
-        chown $rec "$owner_group" "$target" 2>/dev/null || warn "chown не выполнен: $target"
-      fi
-      else
-        debug "chown $owner_group $target"
-          if [[ "$ARG_VALUE_DEBUG" == true ]]; then
-            chown $rec "$owner_group" "$target" || warn "chown не выполнен: $target"
-          else
-            chown $rec "$owner_group" "$target" 2>/dev/null || warn "chown не выполнен: $target"
-          fi
-        fi
+  debug "chown $rec $owner_group $target"
+  if [[ "$ARG_VALUE_DEBUG" == true ]]; then
+    chown $rec "$owner_group" "$target" || warn "chown не выполнен: $target"
+  else
+    chown $rec "$owner_group" "$target" 2>/dev/null || warn "chown не выполнен: $target"
+  fi
+else
+  debug "chown $owner_group $target"
+  if [[ "$ARG_VALUE_DEBUG" == true ]]; then
+    chown "$owner_group" "$target" || warn "chown не выполнен: $target"
+  else
+    chown "$owner_group" "$target" 2>/dev/null || warn "chown не выполнен: $target"
+  fi
+fi
+
     done < <(expand_targets "$path" || true)
   done
 
@@ -442,7 +448,7 @@ set_chmod() {
     while IFS= read -r target; do
       had_any=true
 
-      [[ -d "$target" && "$rec" ]] && continue
+[[ -d "$target" && -z "$rec" ]] && continue
 
       if [[ -n "$rec" ]]; then
         debug "chmod $rec $mode $target"
