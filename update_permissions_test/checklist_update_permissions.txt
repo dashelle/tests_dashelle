@@ -1,1 +1,168 @@
+Чек-лист тестирования скрипта: 
+update_permissions.sh
 
+* manual version *
+
+0) Подготовка тестовой среды:
+- Тестовая машина (VM / VB / Docker)
+- Скрипт исполняемый: chmod +x script.sh
+- Запуск от root (su -l)
+
+###########
+
+1) Smoke-tests:
+- запуск скрипта без аргументов: sudo ./update_permissions.sh
+ОР: показывается help, далее - exit code = 0
+
+- запуск скрипта без su/sudo: ./update_permissions.sh --report
+ОР: ошибка root и exit code != 0
+
+############
+
+2) Help: --help, -h
+ОР: выводится help и без sudo/su (без входа в суперпользователя)
+Например,
+./script.sh
+./script.sh --help 
+./script.sh -h 
+
+###########
+
+3) Import
+3.1.) 
+Создать файл:
+cat > files.txt <<EOF
+/etc/passwd
+/etc/group
+EOF
+Запуск: 
+sudo ./update_permissions.sh --import=files.txt --report
+ОР: import выполнен
+
+3.2.) Импорт без значения
+Запуск:
+sudo ./update_permissions.sh --import --report
+ОР: скрипт ищет update_permissions.sh_output.txt
+если файла нет => ошибка и exit
+
+3.3.) Пустой файл импорта
+: > empty.txt
+sudo ./update_permissions.sh --import=empty.txt --report
+ОР: warning, используется MASSIVE_FILES
+
+3.4.) Несуществующий файл
+sudo ./update_permissions.sh --import=missing.txt
+ОР: ошибка, exit != 0
+
+Пример,
+# --import=valid.txt => импорт выполнен
+# --import=missing.txt => ошибка + exit ≠ 0
+# --import + default file есть => импорт
+# --import + default file нет => ошибка
+Пустой файл => warning + fallback
+
+###########
+
+4) Export
+4.1.) Экспорт без импорт
+sudo ./update_permissions.sh --export
+ОР: 1) создан update_permissions.sh_output.txt; 2) содержит массив MASSIVE_FILES
+
+4.2.) Экспорт с путём
+sudo ./update_permissions.sh --export=/home/tester/export.txt
+ОР: директория и файл созданы
+
+Пример, 
+--export => создан script.sh_output.txt
+--export=/tmp/out.txt => файл создан
+Нет прав на каталог => ошибка
+
+###########
+
+5) CHMOD 
+Валидный:
+sudo ./update_permissions.sh --import=files.txt --chmod=644
+ОР: chmod применён, exit = 0
+
+Невалидный:
+sudo ./update_permissions.sh --chmod=99
+ОР: ошибка, chmod не выполняется
+
+Рекурсивно:
+sudo ./update_permissions.sh --import=files.txt --chmod=755 -R
+ОР: chmod применяется с -R или --recursive
+
+Например, 
+--chmod=644 => применяется
+--chmod=0755 => применяется
+--chmod=000 => ошибка
+--chmod=0444 => ошибка
+--chmod без значения => ошибка
+Каталог без -R => пропущен
+
+###########
+
+6) CHOWN
+Существующий пользователь:
+sudo ./update_permissions.sh --import=files.txt --chown=root:root
+ОР: success (chown выполнен)
+
+Несуществующий пользователь без --create:
+sudo ./update_permissions.sh --import=files.txt --chown=nouser:nogroup
+ОР: ошибка, exit != 0
+
+Несуществующий пользователья с --create:
+sudo ./update_permissions.sh --import=files.txt --chown=testu:testg --create
+ОР: success
+создан пользователь, создана группа, chown выполнен
+
+Например, 
+--chown=root:root => ok
+Несуществующий user => ошибка
+--chown=test:test --create => user+group созданы
+--create без --chown => ошибка
+
+###########
+
+7) Debug
+sudo ./update_permissions.sh --import=files.txt --chmod=644 --debug
+ОР: вывод отладочных сообщений
+Проверка: 
+sudo ./update_permissions.sh --chmod=644 --debug | grep DEBUG
+
+###########
+
+8) Report
+sudo ./update_permissions.shh --import=files.txt --report
+ОР: ls -l для каждого файла, warning для недоступных
+
+Например,
+--report => ls -l вывод
+Недоступные файлы => warning
+Нет файлов => warning
+
+###########
+
+9) Ошибки аргументов
+- sudo ./update_permissions.sh --unknown
+- sudo ./update_permissions.sh --chmod
+- sudo ./update_permissions.sh --chown
+ОР: корректные error-сообщения, exit != 0
+
+10) Безопасность
+Без --import => warning
+Без chmod/chown => ничего не меняется
+Ошибка на одном файле=> остальные обрабатываются
+
+###########
+
+Минимальный набор тестов:
+sudo ./script.sh
+sudo ./script.sh --import=files.txt --report
+sudo ./script.sh --import=files.txt --chmod=644
+sudo ./script.sh --import=files.txt --chmod=000
+sudo ./script.sh --import=files.txt --chown=nouser:nogroup
+sudo ./script.sh --import=files.txt --chown=test:test --create
+sudo ./script.sh --export
+
+* где script.sh = update_permissions.sh
