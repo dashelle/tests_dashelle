@@ -1,45 +1,51 @@
 #!/bin/bash
-clear
 
 set -o errexit
 set -o nounset
 set -o pipefail
 IFS=$'\n\t'
 
+# clear
 
 # Скрипт собирает информацию о системе и сохраняет её в файл.
-
-# Поддерживаемые ключи:
 # --hostname : сохранить только имя хоста
-# --ip : сохранить только IP адрес
-# --sysinfo : сохранить  только сведения об ОС
-# --fresh : перезаписать файл (по умолчанию - дописывать)
-# --output <filename> : имя файл или путь к директории для отчёта
+# --ip       : сохранить только IP адрес
+# --sysinfo  : сохранить сведения об ОС
+# --cpu      : сохранить информацию о CPU
+# --memory   : сохранить информацию о памяти
+# --network  : сохранить сетевую информацию
+# --user     : сохранить информацию о пользователе
+# --all      : сохранить ВСЮ доступную информацию
+# --fresh    : перезаписать файл
+# --output <filename|dir> : имя файла или путь к директории для отчета
 # --debug : включение отладочных сообщений
 # --help : показать справку
 
 # Поведение:
-# - если указан хотя бы один из ключей (--hostname, --ip, --sysinfo) => выполняются только эти действия (можно несколько)
-# - если указан только --fresh (и больше нет других действий) => сохраняются ВСЕ доступные данные (и hostname, и ip, и sysinfo)
-# - файл результата: если указать путь к директории, то сохраняем в ней с именем sysinfo_report.txt,
-# если указано имя файла, то сохраняем туда (если без / - в той же директории, где находится скрипт)
-# - на Linux, проверяем, что скрипт запущен от root (если нет, то выводим ошибку)
-# - вывод который пишется в файл, дублируется в терминале
-# - корректно определяем MacOs или Linux, вычисляем IP соответствующими командами
+# один ключ = одно действие (можно несколько ключей в одну команду)
+# если указан --fresh без других ключей = сохраняем ВСЕ данные о системе
+# файл с результатом sysinfo_report.txt сохраняем в текущей директории (где скрипт) или указываем путь для сохранения
+# определяем ОС (MacOS или Linux)
+# Linux-окружение = проверка, что скрипт запущен от root
+# Вывод в файл = дубль в терминале
 
 # -----------------------
-# Переменные по-умочанию
+# Переменные по-умолчанию
 # -----------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" # определяем директорию, где лежит сам скрипт
-OUTPUT_TARGET="" # Сюда записывается путь, если задач ключ --output
+OUTPUT_TARGET="" # Сюда записывается путь, если задан ключ --output
 OUTPUT_FILE=""   # Полный путь к файлу отчета
 FRESH=false      # Нужно перезаписать файл (ключ --fresh)
 DEBUG=false      # Отладка (--debug)
 
-# Какие действия выполняем (если пусто, то означает, что нет явного действия)
-DO_HOSTNAME=false # Собираем данные о hostname
-DO_IP=false       # Собираем данные об IP
-DO_SYSINFO=false  # Собираем системную инфу
+DO_HOSTNAME=false
+DO_IP=false
+DO_SYSINFO=false
+DO_CPU=false
+DO_MEMORY=false
+DO_NETWORK=false
+DO_USER=false
+DO_ALL=false
 
 # -------------------
 # Окрашивание вывода
@@ -54,10 +60,7 @@ function msg() { echo -e "$*"; }
 function info() { msg "${BOLD}INFO:${NORM} $*"; }
 function warn() { msg "${YELLOW}WARNING:${NORM} $*"; }
 function error() { msg "${RED}ERROR:${NORM} $*"; }
-function debug() { if [[ "$DEBUG" == true ]]; then
-  msg "DEBUG: $*"
-  fi
-}
+function debug() { [[ "$DEBUG" == true ]] && msg "DEBUG: $*" ; }
 
 
 # -----------------
@@ -71,15 +74,21 @@ function show_help() {
   --hostname              Сохранить только имя хоста
   --ip                    Сохранить только IP адрес (IPv4)
   --sysinfo               Сохранить только информацию об ОС
+  --cpu
+  --memory
+  --network
+  --user
+  --all
   --fresh                 Перезаписать файл отчёта (иначе данные дописываются в отчёт)
-  --output <path|file>    Имя файла или путь к директории для отчёта
+  --output <file|dir>    Имя файла или путь к директории для отчёта
   --debug                 Включить отладочный вывод
   --help                  Показать справку
 
   Примеры:
     $(basename "$0") --ip --output=report.txt
     $(basename "$0") --hostname --debug
-    $(basename "$0") --fresh --output /tmp
+    $(basename "$0") --fresh --output /home
+    $(basename "$0") --all --output /home
 EOF
 }
 
@@ -88,25 +97,21 @@ EOF
 # Определение ОС
 # ---------------
 function detect_os() {
-  local uname_s
-  uname_s="$(uname -s 2>/dev/null || echo Unknown)"
-    case "$uname_s" in
-      Linux*)  echo "linux" ;;
-      Darwin*) echo "mac" ;;
-      *)       echo "unknown" ;;
-    esac
+  case "$(uname -s)" in
+    Linux*)  echo "linux" ;;
+    Darwin*) echo "mac" ;;
+    *)       echo "unknown" ;;
+  esac
 }
 
 OS_TYPE="$(detect_os)"        # Сохраняем результат
 debug "Detected OS: $OS_TYPE"
 
-# ------------------------
-# Функции получения данных
-# ------------------------
+# ---------------------------------------------
+# Функции получения данных (универсальные)
+# ---------------------------------------------
 # Получение имени хоста
-function get_hostname() {
-  hostname 2>/dev/null || echo "unknown" ;
-}
+function get_hostname() { hostname || echo "unknown"; }
 
 # Получение IP для Linux
 function get_ip_linux() {
@@ -130,28 +135,73 @@ local ip_via_route
     echo "unknown"
 }
 
-
 # Информация об ОС Linux
-function get_sysinfo_linux() {
-  if [[ -f /etc/os-sysinfo ]] ; then
-    cat /etc/os-sysinfo
-  elif [[ -f /etc/os-release ]] ; then
-   # вывод PRETTY_NAME
-    grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null || awk -F= '/^NAME=|^VERSION=/{print}' /etc/os-release
-  else
-    uname -sr
-  fi
+function get_sysinfo() {
+  case "$OS_TYPE" in
+    linux)
+      [[ -f /etc/os-release ]] && grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d '"'
+      ;;
+    mac) sw_vers ;;
+    *) uname -sr ;;
+  esac
 }
 
-# Информация об MacOs
-function get_sysinfo_mac() {
-  if command -v sw_vers >/dev/null 2>&1; then
-    sw_vers
-  else
-    uname -sr
-  fi
+# CPU
+function get_cpu() {
+  case "$OS_TYPE" in
+    linux) lscpu | awk -F: '/Model name|CPU\(s\)/{print $1 ": " $2}' ;;
+    mac) sysctl -n machdep.cpu.brand_string ;;
+  esac
 }
 
+# Память
+function get_memory() {
+  case "$OS_TYPE" in
+    linux) free -h | awk '/Mem:/ {print "Total: "$2", Used: "$3", Free: "$4}' ;;
+    mac)
+      sysctl hw.memsize | awk '{printf "%.1f GB\n",$2/1024/1024/1024}'
+      ;;
+  esac
+}
+
+# Сеть
+function get_network() {
+  case "$OS_TYPE" in
+    linux) ip addr show ;;
+    mac) ifconfig ;;
+  esac
+}
+
+# Пользователь
+function get_user_info() {
+  echo "User: $(whoami)"
+  id
+}
+
+# --------------------------
+# Полная информация (ALL)
+# --------------------------
+function get_full_system_info() {
+cat <<EOF
+HOSTNAME: $(get_hostname)
+IP: $(get_ip)
+
+SYSTEM:
+$(get_sysinfo)
+
+CPU:
+$(get_cpu)
+
+MEMORY:
+$(get_memory)
+
+NETWORK:
+$(get_network)
+
+USER:
+$(get_user_info)
+EOF
+}
 
 # ----------
 # Аргументы
@@ -164,31 +214,36 @@ fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --help|-h)
-     show_help; exit 0
-    ;;
-    --hostname)
-      DO_HOSTNAME=true; shift ;;
-    --ip)
-      DO_IP=true; shift ;;
-    --sysinfo)
-      DO_SYSINFO=true; shift ;;
-    --fresh)
-      FRESH=true; shift ;;
-    --debug)
-      DEBUG=true; shift ;;
-    --output)
-      shift
-      if [[ -z "${1:-}" ]]; then
-        error "--output требует аргумента"; exit 1
-      fi
-      OUTPUT_TARGET="$1"; shift ;;
-    --output=*)
-      OUTPUT_TARGET="${1#*=}"; shift ;;
-    *)
-      error "Неизвестный параметр: $1"; show_help; exit 1 ;;
+    --hostname) DO_HOSTNAME=true ;;
+    --ip) DO_IP=true ;;
+    --sysinfo) DO_SYSINFO=true ;;
+    --cpu) DO_CPU=true ;;
+    --memory) DO_MEMORY=true ;;
+    --network) DO_NETWORK=true ;;
+    --user) DO_USER=true ;;
+    --all) DO_ALL=true ;;
+    --fresh) FRESH=true ;;
+    --debug) DEBUG=true ;;
+    --output) shift; OUTPUT_TARGET="${1:-}";;
+    --output=*) OUTPUT_TARGET="${1#*=}" ;;
+    --help) show_help; exit 0 ;;
+    *) error "Неизвестный параметр: $1"; exit 1 ;;
   esac
+  shift
 done
+
+# --------------------------
+# Логика выбора действий
+# --------------------------
+if $DO_ALL; then
+  DO_HOSTNAME=true
+  DO_IP=true
+  DO_SYSINFO=true
+  DO_CPU=true
+  DO_MEMORY=true
+  DO_NETWORK=true
+  DO_USER=true
+fi
 
 debug "Flags: DO_HOSTNAME=$DO_HOSTNAME DO_IP=$DO_IP DO_SYSINFO=$DO_SYSINFO FRESH=$FRESH OUTPUT_TARGET='$OUTPUT_TARGET'"
 
@@ -213,14 +268,14 @@ fi
 # ---------------------------------------
 if [[ "$OS_TYPE" == 'linux' ]]; then
   if [[ "$EUID" -ne 0 ]]; then
-    error "Требуется root при запуске на Linux. Выполните: sudo $0 ..."
+    error "В Linux требуется root. Выполните: sudo $0 ..."
     exit 1
   fi
 fi
 
-# ----------------------
-# Подготовка OUTPUT_FILE
-# ----------------------
+# ------------------------------------
+# Подготовка OUTPUT_FILE / ОТЧЁТ
+# ------------------------------------
 if [[ -n "$OUTPUT_TARGET" ]]; then
   if [[ -d "$OUTPUT_TARGET" ]]; then
     OUTPUT_FILE="$OUTPUT_TARGET/sysinfo_report.txt"
@@ -258,37 +313,20 @@ fi
 # --------------------
 # Сбор и запись данных
 # --------------------
-TIMESTAMP="$(date '+%F %T')"
-  {
-    echo "--- Отчет $(basename "$0") $TIMESTAMP ---"
+{
+echo "--- REPORT $(date '+%F %T') ---"
 
-    if $DO_HOSTNAME; then
-      HN="$(get_hostname)"
-      echo "HOSTNAME: $HN"
-    fi
-
-    if $DO_IP; then
-      if [[ "$OS_TYPE" == "mac" ]]; then
-       IP_ADDR="$(get_ip_mac)"
-      else
-        IP_ADDR="$(get_ip_linux)"
-      fi
-      echo "IP: ${IP_ADDR:-unknown}"
-    fi
-
-  if $DO_SYSINFO; then
-    if [[ "$OS_TYPE" == "mac" ]]; then
-      echo "SYSTEM:"
-      get_sysinfo_mac | sed 's/^/ /'
-    else
-      echo "SYSTEM:"
-      get_sysinfo_linux | sed 's/^/ /'
-    fi
-  fi
+$DO_HOSTNAME && echo "HOSTNAME: $(get_hostname)"
+$DO_IP && echo "IP: $(get_ip)"
+$DO_SYSINFO && echo -e "SYSTEM:\n$(get_sysinfo)"
+$DO_CPU && echo -e "CPU:\n$(get_cpu)"
+$DO_MEMORY && echo "MEMORY: $(get_memory)"
+$DO_NETWORK && echo -e "NETWORK:\n$(get_network)"
+$DO_USER && echo -e "USER:\n$(get_user_info)"
 
   echo
   } | tee -a "$OUTPUT_FILE"
 
-  info "Запись завершена: $OUTPUT_FILE"
+  info "Готово: $OUTPUT_FILE"
   debug "Конец выполнения"
   exit 0
