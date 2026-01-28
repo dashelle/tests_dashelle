@@ -1,6 +1,12 @@
 #!/bin/bash
 clear
 
+set -o errexit
+set -o nounset
+set -o pipefail
+IFS=$'\n\t'
+
+
 # Скрипт собирает информацию о системе и сохраняет её в файл.
 
 # Поддерживаемые ключи:
@@ -40,7 +46,7 @@ DO_SYSINFO=false  # Собираем системную инфу
 # -------------------
 BOLD="\033[1m"
 RED="\033[0;31m"
-YELLOW="033[0;33m"
+YELLOW="\033[0;33m"
 NORM="\033[0m"
 
 
@@ -254,7 +260,7 @@ fi
 # --------------------
 TIMESTAMP="$(date '+%F %T')"
   {
-    echo "--- Отчет sysinfo_sample.sh $TIMESTAMP ---"
+    echo "--- Отчет $(basename "$0") $TIMESTAMP ---"
 
     if $DO_HOSTNAME; then
       HN="$(get_hostname)"
@@ -263,12 +269,12 @@ TIMESTAMP="$(date '+%F %T')"
 
     if $DO_IP; then
       if [[ "$OS_TYPE" == "mac" ]]; then
-      IP_ADDR="$(get_ip_mac)"
-    else
-      IP_ADDR="$(get_ip_linux)"
+       IP_ADDR="$(get_ip_mac)"
+      else
+        IP_ADDR="$(get_ip_linux)"
+      fi
+      echo "IP: ${IP_ADDR:-unknown}"
     fi
-    echo "IP: ${IP_ADDR:-unknown}"
-  fi
 
   if $DO_SYSINFO; then
     if [[ "$OS_TYPE" == "mac" ]]; then
@@ -286,4 +292,3 @@ TIMESTAMP="$(date '+%F %T')"
   info "Запись завершена: $OUTPUT_FILE"
   debug "Конец выполнения"
   exit 0
-}
