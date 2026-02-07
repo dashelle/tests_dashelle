@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# System information collection script for macOS and Linux
+#
+# Author: Daria Mai
+# Usage: ./info_os_bash.sh [options]
+#
+
 set -o errexit
 set -o nounset
 set -o pipefail
