@@ -1,0 +1,9 @@
+# macOS system files
+.DS_Store
+
+# script output
+sysinfo_report.txt
+
+# IDE
+.idea/
+
